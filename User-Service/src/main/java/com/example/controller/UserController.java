@@ -1,13 +1,12 @@
 package com.example.controller;
 
 import com.example.dto.UserDto;
+import com.example.dto.UserProfileDto;
 import com.example.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.concurrent.ExecutionException;
 
@@ -21,5 +20,11 @@ public class UserController {
     @PostMapping("/user")
     public Long createUser(@RequestBody @Valid  UserDto userDto) throws ExecutionException, InterruptedException {
         return userService.createUser(userDto);
+    }
+
+    @GetMapping("/profile/{id}")
+    public ResponseEntity<UserProfileDto> getProfile(@PathVariable Long id){
+        UserProfileDto userProfileDto = userService.userProfileDto(id);
+        return ResponseEntity.ok(userProfileDto);
     }
 }

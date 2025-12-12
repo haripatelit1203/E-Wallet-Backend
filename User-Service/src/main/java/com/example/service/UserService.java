@@ -1,9 +1,14 @@
 package com.example.service;
 
+import com.example.UserApp;
+import com.example.client.WalletServiceClient;
 import com.example.dto.UserCreatedPayload;
 import com.example.dto.UserDto;
+import com.example.dto.UserProfileDto;
+import com.example.dto.WalletBalanceDto;
 import com.example.entity.User;
 import com.example.repo.UserRepo;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +36,12 @@ public class UserService {
     @Value("${user.created.topic}")
     private String userCreatedTopic;
 
+    @Autowired
+    private WalletServiceClient walletServiceClient;
+
+    @Autowired
+    private RedisTemplate<String, UserDto> redisTemplate;
+
     @Transactional
     public Long createUser(UserDto userDto) throws ExecutionException, InterruptedException {
         User user = new User();
@@ -47,7 +58,36 @@ public class UserService {
         userCreatedPayload.setRequestId(MDC.get("requestId"));
         Future<SendResult<String,Object>> future = kafkaTemplate.send(userCreatedTopic,userCreatedPayload.getUserEmail(),userCreatedPayload);
         LOGGER.info("Pushed userCreatedPayload to Kafka: {}",future.get());
-
+        String key = "user:"+user.getId();
+        LOGGER.info("Putting User Details in Redis");
+        redisTemplate.opsForValue().set(key,userDto);
         return user.getId();
+    }
+
+    public UserProfileDto userProfileDto(Long id){
+        UserProfileDto userProfileDto = new UserProfileDto();
+        String key = "user:"+id;
+        LOGGER.info("Getting User Details in Redis");
+        UserDto userDto = (UserDto) redisTemplate.opsForValue().get(key);
+        if( userDto != null){
+            userProfileDto.setUserDetail(userDto);
+        }
+        else {
+            User user = userRepo.findById(id).get();
+            userDto = new UserDto();
+            userDto.setEmail(user.getEmail());
+            userDto.setName(user.getName());
+            userDto.setKycNumber(user.getKycNumber());
+            userDto.setPhone(user.getPhone());
+            LOGGER.info("Putting User Details in Redis");
+            redisTemplate.opsForValue().set(key,userDto);
+            userProfileDto.setUserDetail(userDto);
+
+        }
+
+        // Call Wallet Service API
+        WalletBalanceDto walletBalanceDto = walletServiceClient.getBalance(id).getBody();
+        userProfileDto.setWalletBalance(walletBalanceDto.getBalance());
+        return userProfileDto;
     }
 }
