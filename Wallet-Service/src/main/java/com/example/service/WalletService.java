@@ -1,9 +1,6 @@
 package com.example.service;
 
-import com.example.dto.TransactionInitPayLoad;
-import com.example.dto.TxnCompletedPayLoad;
-import com.example.dto.WalletBalanceDto;
-import com.example.dto.WalletUpdatedPayload;
+import com.example.dto.*;
 import com.example.entity.Wallet;
 import com.example.repo.WalletRepo;
 import org.slf4j.Logger;
@@ -14,6 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -34,6 +32,9 @@ public class WalletService {
 
     @Value("${wallet.updated.topic}")
     private String walletUpdatedTopic;
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     public WalletBalanceDto walletBalanceDto(Long userId){
         Wallet wallet = walletRepo.findByUserId(userId);
@@ -73,5 +74,18 @@ public class WalletService {
         }
         Future<SendResult<String,Object>> future = kafkaTemplate.send(txnCompletedTopic,initPayLoad.getFromUserId().toString(),txnCompletedPayLoad);
         LOGGER.info("Pushed TxnCompleted to Kafka: {}", future.get());
+    }
+
+    public String processPgTxnId(String pgTxnId){
+        PGPaymentStatusDTO pgPaymentStatusDTO = restTemplate.getForObject("http://localhost:9090/pg-service/payment-status/"+pgTxnId, PGPaymentStatusDTO.class);
+        if (pgPaymentStatusDTO.getStatus().equalsIgnoreCase("SUCCESS")) {
+            Wallet wallet = walletRepo.findByUserId(pgPaymentStatusDTO.getUserId());
+            wallet.setBalance(wallet.getBalance() + pgPaymentStatusDTO.getAmount());
+            walletRepo.save(wallet);
+            return "Wallet Updated";
+        }
+        else{
+            return "PG Txn Failed";
+        }
     }
 }
